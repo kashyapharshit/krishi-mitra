@@ -1,0 +1,126 @@
+Final code for full soil+crop reccomendation model
+
+
+from collections import Counter
+print(Counter(train_dataset.targets))
+
+
+import os
+import numpy as np
+import torch
+from torchvision import transforms
+from PIL import Image
+
+# Assuming these objects are already defined and trained:
+# - model_custom: CNN model for soil image classification
+# - model: model for crop recommendation (trained on [N, P, K, temp, humidity, ph, rainfall, soil_one_hot])
+# - scaler: fitted StandardScaler used during training
+# - le: fitted LabelEncoder for crop labels
+# - train_dataset or equivalent soil class list
+# Make sure these are all loaded correctly before running this script.
+
+# --- Setup ---
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model_custom.eval()
+model_custom.to(device)
+model.eval()
+
+# --- Transform for Soil Image ---
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize([0.5]*3, [0.5]*3)
+])
+
+# --- Soil Mapping ---
+soil_type_map_full = {
+    'alluvial': 0,
+    'black':    1,
+    'red':      2,
+    'laterite': 3
+}
+class_names = list(soil_type_map_full.keys())  # e.g., ['alluvial', 'black', 'red', 'laterite']
+
+def get_soil_one_hot(index, total_classes=8):
+    one_hot = np.zeros(total_classes)
+    one_hot[index] = 1
+    return one_hot
+
+def get_default_npk_for_soil(soil_type):
+    soil_type = soil_type.lower()
+    if soil_type == 'alluvial':
+        return 90, 35, 45
+    elif soil_type == 'black':
+        return 100, 40, 50
+    elif soil_type == 'red':
+        return 50, 25, 70
+    elif soil_type == 'laterite':
+        return 40, 22, 60
+    else:
+        raise ValueError("Invalid soil type")
+
+def predict_soil(image_path, model, transform, class_names):
+    image = Image.open(image_path).convert("RGB")
+    image = transform(image).unsqueeze(0).to(device)
+    with torch.no_grad():
+        outputs = model(image)
+        _, predicted = torch.max(outputs, 1)
+        predicted_class = class_names[predicted.item()]
+    return predicted_class
+
+# --- User: Know soil or not ---
+user_knows_soil = input("🧭 Do you know the soil type? (yes/no): ").strip().lower()
+if user_knows_soil == "yes":
+    soil = input("🟤 Enter soil type (alluvial / black / red / laterite): ").strip().lower()
+    if soil not in soil_type_map_full:
+        raise ValueError("Invalid soil type.")
+elif user_knows_soil == "no":
+    user_image_path = input("📁 Enter the full path to the soil image: ").strip()
+    if os.path.isfile(user_image_path):
+        soil = predict_soil(user_image_path, model_custom, transform, class_names)
+        print(f"\n🧠 Predicted Soil Type from Image: {soil.capitalize()}")
+    else:
+        raise FileNotFoundError("❌ Invalid image path.")
+else:
+    raise ValueError("⚠️ Please answer 'yes' or 'no'.")
+
+# --- NPK: Auto-fill or Manual ---
+use_auto_npk = input("\n🔄 Auto-fill NPK based on soil type? (yes/no): ").strip().lower()
+if use_auto_npk == 'yes':
+    N, P, K = get_default_npk_for_soil(soil)
+    print(f"\n📦 Auto-filled NPK values for '{soil.capitalize()}':")
+    print(f"   🧪 Nitrogen (N): {N}")
+    print(f"   🧪 Phosphorus (P): {P}")
+    print(f"   🧪 Potassium (K): {K}")
+else:
+    N = float(input("Enter Nitrogen (N): "))
+    P = float(input("Enter Phosphorus (P): "))
+    K = float(input("Enter Potassium (K): "))
+
+# --- Environment Inputs ---
+temperature = float(input("\n🌡️ Enter Temperature (°C): "))
+humidity = float(input("💧 Enter Humidity (%): "))
+ph = float(input("🧪 Enter soil pH: "))
+rainfall = float(input("🌧️ Enter Rainfall (mm): "))
+
+# --- Prepare Input for Crop Model ---
+custom_raw = np.array([[N, P, K, temperature, humidity, ph, rainfall]])
+custom_num = scaler.transform(custom_raw)
+
+soil_index = soil_type_map_full[soil]
+soil_one_hot = get_soil_one_hot(soil_index, total_classes=8).reshape(1, -1)
+
+custom_input = np.concatenate([custom_num, soil_one_hot], axis=1).astype(np.float32)
+custom_tensor = torch.tensor(custom_input, dtype=torch.float32).to(device)
+
+# --- Predict Crop ---
+with torch.no_grad():
+    output = model(custom_tensor)
+    probs = torch.softmax(output, dim=1).cpu().numpy()[0]
+    top_indices = probs.argsort()[::-1][:3]
+
+# --- Output ---
+print("\n📈 Prediction Results:")
+for idx in top_indices:
+    print(f"  🌿 {le.classes_[idx]}: {probs[idx]:.4f}")
+print(f"\n✅ Best Suited Crop: {le.classes_[top_indices[0]]}")
