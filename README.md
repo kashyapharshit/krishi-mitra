@@ -6,4 +6,12 @@ The datasets used in this project (soil images) are available on Google Drive.
 
 [Click here to access the dataset](https://drive.google.com/drive/folders/1K3FY6TzLudNfStd32DtfBby-IkpAoYBo?usp=sharing)
 
+## 📥 Dataset Access
+
+The datasets used in this project (crop data ) are available on Google Drive.
+
+[Click here to access the dataset](https://drive.google.com/file/d/1dDUNgzlXCpM7KiR6JkwPL1mZ7QU1eTCz/view?usp=sharing)
+
+Make sure to download and place the files inside the `data/` folder before running the models.
+
 Make sure to download and place the files inside the `data/` folder before running the models.
